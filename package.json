@@ -1,0 +1,26 @@
+{
+  "name": "link-dler",
+  "version": "1.0.0",
+  "description": "Parses an html file for links to assets hosted on a Content Delivery Network (CDN). Downloads those files locally. Then, either replaces those links or creates a local fallback.",
+  "main": "index.js",
+  "scripts": {
+    "test": "mocha js/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rendall/link-dler.git"
+  },
+  "keywords": [
+    "html",
+    "link",
+    "cdn",
+    "download",
+    "fallback"
+  ],
+  "author": "Rendall Koski",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/rendall/link-dler/issues"
+  },
+  "homepage": "https://github.com/rendall/link-dler#readme"
+}
