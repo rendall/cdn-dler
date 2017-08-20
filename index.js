@@ -16,8 +16,10 @@ var scriptPtrn = /<script.*?src=["']((?:https?:\/\/)?[a-z0-9\/\.\-]+\.[a-z]{2,4}
 var getTag = function (html) {
     var pattern = RegExp(scriptPtrn);
     var exec = pattern.exec(html);
-    console.log(tag);
+    return (exec != null) ? exec[1] : null;
 };
 var parseFile = function (file) { return openHtmlFile(file).then(function (data) { return getTag(data); }).catch(function (e) { return console.error(e); }); };
+exports.openHtmlFile = openHtmlFile;
+exports.getTag = getTag;
 exports.parseFile = parseFile;
 require('make-runnable');

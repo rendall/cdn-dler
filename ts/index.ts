@@ -19,10 +19,12 @@ const scriptPtrn = /<script.*?src=["']((?:https?:\/\/)?[a-z0-9\/\.\-]+\.[a-z]{2,
 const getTag = (html:string) => {
     const pattern = RegExp(scriptPtrn);
     const exec = pattern.exec(html);
-    console.log(tag);
+    return (exec != null)? exec[1] : null;
 }
 
 const parseFile = (file:string) => openHtmlFile(file).then((data) => getTag(data)).catch((e: any) => console.error(e));
 
+exports.openHtmlFile = openHtmlFile;
+exports.getTag = getTag;
 exports.parseFile = parseFile;
 require('make-runnable');
