@@ -4,9 +4,10 @@ var assert = require('assert');
 describe('cdn-dler module', function() {
   describe('openHtmlFile(test.html)', function() {
     it('Should open the test.html file', function() {
-      //assert.equal(-1, [1,2,3].indexOf(4));
         return cdnDler.openHtmlFile("./test/test.html");      
     });
+
+    describe('');
   });
 
   describe('getTag(teststring)', function() {
@@ -16,4 +17,6 @@ describe('cdn-dler module', function() {
         assert.equal(URL,cdnDler.getTag(HTML));
     });
   });
+
+
 });

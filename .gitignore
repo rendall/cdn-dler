@@ -60,3 +60,9 @@ typings/
 # cdn-dler specific
 js
 
+/.vs/cdn-dler/v15
+/.gitattributes
+/cdn-dler.njsproj
+/cdn-dler.sln
+/obj/Debug
+/cdn-dler.njsproj.user
