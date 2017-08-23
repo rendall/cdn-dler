@@ -12,64 +12,44 @@ var __extends = (this && this.__extends) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 var R = require("ramda");
 var mkdirp = require("mkdirp");
-//import node = require('node');
 var fs = require("fs");
 var http = require("http");
 var path = require("path");
-var Config = /** @class */ (function (_super) {
-    __extends(Config, _super);
-    function Config() {
+var CdnDlerConfig = (function (_super) {
+    __extends(CdnDlerConfig, _super);
+    function CdnDlerConfig() {
         return _super !== null && _super.apply(this, arguments) || this;
     }
-    return Config;
+    return CdnDlerConfig;
 }(Object));
-var HtmlInfo = /** @class */ (function () {
-    function HtmlInfo(config, file) {
-        var _this = this;
-        this.addHtml = function (html) { return R.assoc('html', html, _this); };
+exports.CdnDlerConfig = CdnDlerConfig;
+var HtmlInfo = (function () {
+    function HtmlInfo(config, readFile, writeFile) {
         this.config = config;
-        this.file = file;
-        //this.matches = [];
-        //this.html = "";
-        //this.urls = [];
+        this.readFile = readFile;
+        this.writeFile = writeFile;
     }
     return HtmlInfo;
 }());
-//TODO: take this out, put it in a config file.
-var configObj = {
-    // jsDir is an optional variable that tells the module where to place all js files. Any other instruction is relative to this file.
-    // if jsDir is not defined, then instructions will be defined relative to the current working directory.
+exports.HtmlInfo = HtmlInfo;
+var notify = function (msg) {
+    var a = [];
+    for (var _i = 1; _i < arguments.length; _i++) {
+        a[_i - 1] = arguments[_i];
+    }
+};
+var defaultConfig = {
     jsDir: "./js/vendor/",
-    // This cdnMap variable tells the module where to write downloaded files.
-    // It uses a regexp pattern to match a given URL to a local directory.
-    // It is comprised of an array of [regexp, string] tuples. e.g. ["cdn.example.com/public/", "./"]
-    // The left string represents the URL. The right string represents its corresponding local directory.
-    // The module will attempt to match a URL beginning from the first tuple, 
-    //   using the left-hand pattern to strip characters from the URL up to, but not including, the filename. 
-    //   The remaining string will be applied to the right-hand pattern to derive the intended download directory (within the jsDir, if defined). 
-    // e.g.:  
-    // ['*','./'] will match every single URL, strip all characters except the filename and 
-    //    place the files directly under the jsDir in a flat directory structure.
-    //    e.g. http://cdn.example.com/public/hello.js => ./js/hello.js 
-    //
-    // ["*.com/", './'] will strip all characters up to and including .com from the URL leaving the remaining path, which will be preserved under jsDir.
-    //    This would match the URL http://cdn.example.com/public/hello.js to the local filepath ./js/public/hello.js 
-    // ["ajax.googleapis.com/ajax/libs/", './js/vendor'] 
-    //     Would convert the URL https://ajax.googleapis.com/ajax/libs/angularjs/1.6.4/angular.min.js 
-    //        to the local filepath ./js/vendor/angularjs/1.6.4/angular.min.js
-    // TODO: How would a user who wants js/ajax/googleapis/com/...etc go about getting that?
     cdnMap: [
         [/maxcdn\.bootstrapcdn\.com\//, "./"],
         [/code\.jquery\.com\//, "./jquery/"],
-        [/ajax\.googleapis\.com\/ajax\/libs\//, './'],
-        [/.*/, './']
+        [/ajax\.googleapis\.com\/ajax\/libs\//, './']
     ],
     downloadOK: true,
     overwriteOK: true,
     mkdirOK: true
 };
-var getDownloadDir = function (url, config, i) {
-    if (config === void 0) { config = configObj; }
+var getLocalPath = function (url, config, i) {
     if (i === void 0) { i = 0; }
     var cdnMap = config.cdnMap;
     if (i >= cdnMap.length)
@@ -81,142 +61,175 @@ var getDownloadDir = function (url, config, i) {
         var dir = urlDir[1];
         var subdir = url.substr(exec.index + exec[0].length);
         var jsDir = (config.hasOwnProperty("jsDir")) ? config.jsDir : "";
-        var relPath = path.normalize(jsDir + urlDir[1] + subdir).replace('/', path.sep);
-        //const absPath = __dirname + path.sep + relPath;
-        return relPath;
+        var normPath = path.normalize(jsDir + urlDir[1] + subdir).split('/').join(path.sep);
+        return normPath;
     }
     else
-        return getDownloadDir(url, config, i + 1);
+        return getLocalPath(url, config, i + 1);
 };
-// TODO: remove the optional config arg here, and have it be mandatory.
-var readHtmlFile = function (file, config) { return new Promise(function (resolve, reject) {
-    var onResponse = function (err, data) { return err ? onError(err) : resolve(htmlInfo.addHtml(data)); };
-    var onError = function (error) { return reject(error); };
-    var htmlInfo = new HtmlInfo(configObj, file);
-    try {
-        fs.readFile(file, 'utf8', onResponse);
-    }
-    catch (error) {
-        onError(error);
-    }
-}); };
-var scriptPtrn = /(<script.*?src=["']((?:https?:)?\/\/[a-z0-9\/\.\-]+\.[a-z]{2,4}(?![a-z])(?:\/[a-z\-\/\.\?=0-9\&_]*)?)["'].*>)/g;
-var identifySrcs = function (info) {
+var verifyHTML = function (file) { return (file && file != ''); };
+var readHtmlFile = function (file, config) {
+    notify("reading HTML file \"" + file + "\"");
+    var executor = function (resolve, reject) {
+        var htmlInfo = new HtmlInfo(config, file, file);
+        var onResponse = function (err, data) {
+            if (err)
+                return onError(err);
+            else if (!verifyHTML(data))
+                return Promise.reject(file + " contains invalid or no data");
+            else
+                return resolve(R.assoc('html', data, htmlInfo));
+        };
+        var onError = function (error) { return reject(error); };
+        try {
+            fs.readFile(file, 'utf8', onResponse);
+        }
+        catch (error) {
+            onError(error);
+        }
+    };
+    return new Promise(executor);
+};
+var scriptPtrn = /(<script.*?src=["']((?:https?:)?\/\/[a-z0-9\/\.\-]+\.[a-z]{2,4}(?![a-z])(?:\/[a-z\-\/\.\?=0-9\&_]*)?)["'].*?>\s?<\/script>)/g;
+var identifyScripts = function (info) {
+    notify("identifying scripts in \"" + info.readFile + "\"");
     var getSrcs = function (html, idx, matches) {
         if (idx === void 0) { idx = 0; }
         if (matches === void 0) { matches = []; }
         var match = RegExp(scriptPtrn).exec(html);
         if (match == null)
             return matches;
-        return getSrcs(html, match.index, R.append(match, matches));
+        var src = match[0];
+        var isHit = function (src, pattern) { return RegExp(pattern).test(src); };
+        var hasMatch = R.any(R.curry(isHit)(src))(info.config.cdnMap.map(function (c) { return c[0]; }));
+        notify("    adding script " + src);
+        return hasMatch ? getSrcs(html, match.index, R.append(match, matches)) : getSrcs(html, match.index, matches);
     };
     var matches = getSrcs(info.html);
+    if (matches.length == 0)
+        notify("    no scripts identified in " + info.readFile);
     var urls = matches.map(function (m) { return m[2]; });
-    //console.log("matches", matches);
-    //console.log("urls", urls);
     var newInfo = R.compose(R.assoc('urls', urls), R.assoc('matches', matches))(info);
-    //console.log("newInfo:", newInfo);
     return newInfo;
 };
 var downloadSrcs = function (info) {
     var dlSrcHlpr = function (url) { return new Promise(function (resolve, reject) {
         var src = url.startsWith("//") ? "http:" + url : url.startsWith("https:") ? url.replace("https:", "http:") : url;
         var onResponseEnd = function (url, fileData) { return resolve([url, fileData]); };
+        var onResponseError = function (e) { return reject(e); };
+        var onResponseGet = function (res) {
+            var statusCode = res.statusCode;
+            if (statusCode != 200)
+                reject("Error " + statusCode + ": " + res.statusMessage + " " + url);
+            var fileData = '';
+            res.on('data', function (data) {
+                fileData += data;
+            }).on('end', function () {
+                notify("  done \"" + path.basename(src) + "\"");
+                onResponseEnd(url, fileData);
+            }).on('error', onResponseError);
+        };
         try {
-            http.get(src, function (res) {
-                // TODO: this data collection should be done in a better way, but for now...
-                var fileData = '';
-                res.on('data', function (data) {
-                    fileData += data;
-                }).on('end', function () {
-                    //                    onResponseEnd(url, fileData);
-                    onResponseEnd(url, 'fileData');
-                });
-            });
+            notify("  downloading \"" + src + "\"");
+            var getRequest = http.get(src, onResponseGet);
+            getRequest.on('error', function (err) { return onResponseError(err); });
         }
         catch (error) {
-            reject(error);
+            notify("  error \"" + src + "\"", error);
+            onResponseError(error);
         }
     }); };
     if (info.config.downloadOK) {
+        notify("downloading identified src scripts in \"" + info.readFile + "\"");
         var downloads = R.map(dlSrcHlpr)(info.urls);
-        return Promise.all(downloads).then(function (downloads) { return R.assoc('downloads', downloads, info); });
+        var addDownloads = function (d) {
+            var urls = d.map(function (u) { return u[0]; });
+            var data = d.map(function (u) { return u[1]; });
+            var paths = urls.map(function (url) { return getLocalPath(url, info.config); });
+            var newInfo = R.compose(R.assoc('urls', urls), R.assoc('data', data), R.assoc('paths', paths))(info);
+            return newInfo;
+        };
+        return Promise.all(downloads).then(addDownloads);
     }
     else
         return Promise.resolve(info);
 };
-//const dirFromPath = (path: string) => path.substring(0, path.lastIndexOf("/"));
-// TODO: Make this into a promise.
 var makeDirs = function (info) {
     if (info.config.mkdirOK) {
-        var srcs = R.map(function (url) { return getDownloadDir(url, info.config); })(info.downloads.map(function (e) { return e[0]; }));
-        //console.log("srcs", srcs);
-        var dirsToMake = R.map(path.dirname)(srcs);
-        //console.log("dirsToMake:", dirsToMake);
-        dirsToMake.forEach(function (dir) { return mkdirp(dir, function (err) {
-            if (err)
-                console.error(err);
-            else
-                console.log("made dir " + dir);
-        }); });
+        notify("making directories for scripts: \"" + info.urls.map(function (u) { return path.basename(u); }).join(', ') + "\"");
+        var dirsToMake = info.paths.map(path.dirname);
+        var writeDir = function (dir) {
+            notify("    mkDir " + dir);
+            mkdirp.sync(dir);
+        };
+        dirsToMake.forEach(writeDir);
+        if (dirsToMake.length == 0)
+            notify("    mkdir unnecessary");
     }
     return info;
 };
 var writeFile = function (path, data) {
-    var file = fs.createWriteStream(path);
+    notify("    writing " + path);
     try {
+        var file = fs.createWriteStream(path);
         file.write(data);
         file.end();
-        //console.log(`written: ${path}`);
+        notify("    done " + path);
     }
     catch (error) {
-        console.error(error);
+        notify("    write error " + path, error);
     }
 };
 var writeSrcs = function (info) {
-    info.downloads.forEach(function (d) { return writeFile(getDownloadDir(d[0]), d[1]); });
-    //console.log("writeSrcs", info);
+    notify('writing srcs');
+    R.zip(info.paths, info.data).forEach(function (d) { return writeFile(d[0], d[1]); });
     return info;
 };
 var modifyHtmlFile = function (info) {
     if (info.config.overwriteOK) {
-        var replaceSrcs_1 = function (html, mr, index) {
+        notify("modifying html of " + info.readFile);
+        var replaceSrcs_1 = function (html, info, index) {
             if (index === void 0) { index = 0; }
-            if (index >= mr.length)
+            if (index >= info.matches.length)
                 return html;
-            var modHtml = replaceSrcs_1(html, mr, index + 1); // modify last first.
-            var tuple = mr[index];
-            var exec = tuple[0];
-            var download = tuple[1];
-            var localDir = getDownloadDir(download[0]).split(path.sep).join('/');
-            var replaceStr = "<script src=\"" + localDir + "\"></script>";
+            var modHtml = replaceSrcs_1(html, info, index + 1);
+            var exec = info.matches[index];
+            var localSrcPath = info.paths[index];
+            var localHtmlDir = path.dirname(info.writeFile);
+            var relPath = path.relative(localHtmlDir, localSrcPath).split(path.sep).join('/');
+            var replaceStr = "<script src=\"" + relPath + "\"></script>";
             var newHtml = modHtml.substring(0, exec.index) + replaceStr + modHtml.substr(exec.index + exec[0].length);
             return newHtml;
         };
-        var matchReplace = R.zip(info.matches, info.downloads);
-        var modifiedHtml = replaceSrcs_1(info.html, matchReplace);
+        var modifiedHtml = replaceSrcs_1(info.html, info);
+        if (modifiedHtml === info.html)
+            notify("    html is unmodified");
+        if (!modifiedHtml || modifiedHtml == '')
+            throw Error("HTML was modified into empty string! It's likely that there is a bad regular expression in config.cdnMap Debug info:\n " + JSON.stringify(info));
         return R.assoc('modifiedHtml', modifiedHtml, info);
     }
     else
         return info;
 };
 var writeHtmlFile = function (info) {
-    if (info.config.overwriteOK)
-        writeFile(info.file, info.modifiedHtml);
+    if (info.config.overwriteOK && info.modifiedHtml != info.html) {
+        notify("writing modified HTML " + info.modifiedHtml);
+        if (info.modifiedHtml && info.modifiedHtml != '')
+            writeFile(info.writeFile, info.modifiedHtml);
+        else
+            throw Error("Attempt to write empty string to " + info.writeFile);
+    }
     return info;
 };
-var main = function (config) {
-};
-var processFile = function (file) { return readHtmlFile(file)
-    .then(identifySrcs)
+exports.processFile = function (file, config) { return readHtmlFile(file, config)
+    .then(identifyScripts)
     .then(downloadSrcs)
     .then(makeDirs)
     .then(writeSrcs)
     .then(modifyHtmlFile)
     .then(writeHtmlFile)
-    .then(function (a) { console.log(a); return 1; })
-    .catch(function (e) { return console.error(e); }); };
-exports.getDownloadDir = getDownloadDir;
-exports.processFile = processFile;
+    .then(function (info) { return info; })
+    .catch(function (e) { console.error(e); return 0; }); };
+exports.defaultProcessFile = function (file) { return exports.processFile(file, defaultConfig); };
 require('make-runnable');
 //# sourceMappingURL=index.js.map

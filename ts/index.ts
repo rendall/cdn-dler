@@ -1,46 +1,49 @@
 
 import R = require('ramda');
 import mkdirp = require('mkdirp');
-//import node = require('node');
 import fs = require('fs');
 import http = require('http');
 import urlParser = require('url');
 import path = require('path');
 
-class Config extends Object {
+export class CdnDlerConfig extends Object {
     jsDir?: string; // The root directory to write downloaded files to.
     cdnMap: [RegExp, string][]; // How to convert URLs to local directory structure.
     mkdirOK: boolean; // If it's okay to make directories, set this to true.
     downloadOK: boolean; // If it's okay to download files from the CDN and overwrite corresponding local files, set this to true.
-
     overwriteOK: boolean; // if it's okay to overwrite HTML files, set this to true.
 }
 
-class HtmlInfo {
-    file: string;
+export class HtmlInfo {
+    readFile: string;
+    writeFile: string;
     html: string;
     modifiedHtml: string;
     matches: RegExpExecArray[];
-    config: Config;
-    downloads: [string, string][]; // [url, fileData];
-    readonly urls: string[];
+    config: CdnDlerConfig;
+    //downloads: [string, string][]; // [url, fileData];
+    urls: string[];
+    paths: string[];
+    data: string[];
 
-    constructor(config: Config, file: string) {
+    constructor(config: CdnDlerConfig, readFile: string, writeFile: string) {
         this.config = config;
-        this.file = file;
+        this.readFile = readFile;
+        this.writeFile = writeFile;
         //this.matches = [];
         //this.html = "";
         //this.urls = [];
     }
 
-    addHtml = (html: string) => R.assoc('html', html, this);
     //addDownloads = (downloads: [string, string][]) => R.assoc('downloads', downloads, this);
 
 }
 
+const notify = (msg: string, ...a: any[]) => { };//console.log(msg, ...a);
+
 
 //TODO: take this out, put it in a config file.
-const configObj: Config = {
+const defaultConfig: CdnDlerConfig = {
     // jsDir is an optional variable that tells the module where to place all js files. Any other instruction is relative to this file.
     // if jsDir is not defined, then instructions will be defined relative to the current working directory.
     jsDir: "./js/vendor/",
@@ -66,15 +69,21 @@ const configObj: Config = {
     cdnMap: [
         [/maxcdn\.bootstrapcdn\.com\//, "./"],
         [/code\.jquery\.com\//, "./jquery/"],
-        [/ajax\.googleapis\.com\/ajax\/libs\//, './'],
-        [/.*/, './']
+        [/ajax\.googleapis\.com\/ajax\/libs\//, './']
+        //[/ajax.aspnetcdn.com\/ajax\//, './']
+        //[/.*/, './']
     ],
+
+    /*
+
+    */
+
     downloadOK: true,
     overwriteOK: true,
     mkdirOK: true
 }
 
-const getDownloadDir = (url: string, config: Config = configObj, i: number = 0): string => {
+const getLocalPath = (url: string, config: CdnDlerConfig, i: number = 0): string => {
 
     const cdnMap = config.cdnMap;
     if (i >= cdnMap.length) return "";
@@ -87,81 +96,115 @@ const getDownloadDir = (url: string, config: Config = configObj, i: number = 0):
         const jsDir = (config.hasOwnProperty("jsDir")) ? config.jsDir : "";
 
 
-        const relPath = path.normalize(jsDir + urlDir[1] + subdir).replace('/', path.sep);
-        //const absPath = __dirname + path.sep + relPath;
-        return relPath;
+        const normPath = path.normalize(jsDir + urlDir[1] + subdir).split('/').join(path.sep);
+        return normPath;
     }
-    else return getDownloadDir(url, config, i + 1);
+    else return getLocalPath(url, config, i + 1);
 }
 
+const verifyHTML = (file: string): boolean => <boolean>(file && file != '');
+
 // TODO: remove the optional config arg here, and have it be mandatory.
-const readHtmlFile = (file: string, config?: Config) => new Promise<HtmlInfo>((resolve: Function, reject: Function) => {
+const readHtmlFile = (file: string, config: CdnDlerConfig): Promise<HtmlInfo> => {
+    notify(`reading HTML file "${file}"`);
 
-    const onResponse = (err: Error, data: string) => err ? onError(err) : resolve(htmlInfo.addHtml(data));
-    const onError = (error: any) => reject(error);
 
-    const htmlInfo = new HtmlInfo(configObj, file);
+    const executor = (resolve: Function, reject: Function) => {
+        const htmlInfo = new HtmlInfo(config, file, file);
+        const onResponse = (err: Error, data: string) => {
+            if (err) return onError(err);
+            else if (!verifyHTML(data)) return Promise.reject(`${file} contains invalid or no data`);
+            else return resolve(R.assoc('html', data, htmlInfo));
 
-    try {
-        fs.readFile(file, 'utf8', onResponse);
-    } catch (error) {
-        onError(error);
+        }
+        const onError = (error: any) => reject(error);
+
+        try {
+            fs.readFile(file, 'utf8', onResponse);
+        } catch (error) {
+            onError(error);
+        }
     }
-});
+    return new Promise<HtmlInfo>(executor);
 
-const scriptPtrn = /(<script.*?src=["']((?:https?:)?\/\/[a-z0-9\/\.\-]+\.[a-z]{2,4}(?![a-z])(?:\/[a-z\-\/\.\?=0-9\&_]*)?)["'].*>)/g
+}
 
-const identifySrcs = (info: HtmlInfo): HtmlInfo => {
+const scriptPtrn = /(<script.*?src=["']((?:https?:)?\/\/[a-z0-9\/\.\-]+\.[a-z]{2,4}(?![a-z])(?:\/[a-z\-\/\.\?=0-9\&_]*)?)["'].*?>\s?<\/script>)/g
 
+const identifyScripts = (info: HtmlInfo): HtmlInfo => {
+    notify(`identifying scripts in "${info.readFile}"`);
 
     const getSrcs = (html: string, idx: number = 0, matches: RegExpExecArray[] = []): RegExpExecArray[] => {
         const match = RegExp(scriptPtrn).exec(html);
         if (match == null) return matches;
-        return getSrcs(html, match.index, R.append(match, matches));
+        // Only add matches if they are in the cdnMap
+        const src = match[0];
+        const isHit = (src: string, pattern: RegExp) => RegExp(pattern).test(src);
+        const hasMatch = R.any(R.curry(isHit)(src))(info.config.cdnMap.map((c) => c[0]));
+        notify(`    adding script ${src}`);
+
+        return hasMatch ? getSrcs(html, match.index, R.append(match, matches)) : getSrcs(html, match.index, matches);
     }
 
     const matches = getSrcs(info.html);
+    if (matches.length == 0) notify(`    no scripts identified in ${info.readFile}`);
     const urls = matches.map((m: RegExpExecArray) => m[2]);
-    //console.log("matches", matches);
-    //console.log("urls", urls);
-
-
     const newInfo: any = R.compose(R.assoc('urls', urls), R.assoc('matches', matches))(info);
-    //console.log("newInfo:", newInfo);
-
 
     return newInfo as HtmlInfo;
 }
 
 const downloadSrcs = (info: HtmlInfo): Promise<HtmlInfo> => {
 
-
-    const dlSrcHlpr = (url: string) => new Promise<[string, string]>((resolve: any, reject: any): any => {
+    const dlSrcHlpr = (url: string) => new Promise<[string, string]>((resolve: Function, reject: Function): any => {
 
         const src = url.startsWith("//") ? "http:" + url : url.startsWith("https:") ? url.replace("https:", "http:") : url;
         const onResponseEnd = (url: string, fileData: string) => resolve([url, fileData]);
+        const onResponseError = (e: Error | string) => reject(e);
+        const onResponseGet = (res: http.IncomingMessage) => {
+            // TODO: this data collection should be fp
+
+            const statusCode = res.statusCode;
+
+            if (statusCode != 200) reject(`Error ${statusCode}: ${res.statusMessage} ${url}`);
+
+
+            let fileData = '';
+
+
+
+            res.on('data', function (data: string) {
+                fileData += data;
+            }).on('end', function () {
+                notify(`  done "${path.basename(src)}"`);
+                onResponseEnd(url, fileData);
+                }).on('error', onResponseError);
+        };
 
         try {
-            http.get(src, (res: any) => {
-                // TODO: this data collection should be done in a better way, but for now...
-                let fileData = '';
-                res.on('data', function (data: string) {
-                    fileData += data;
-                }).on('end', function () {
-                    //                    onResponseEnd(url, fileData);
-                    onResponseEnd(url, 'fileData');
-                });
-            })
+            notify(`  downloading "${src}"`);
+            const getRequest = http.get(src, onResponseGet);
+            getRequest.on('error', (err) => onResponseError(err));
         } catch (error) {
-            reject(error);
+            notify(`  error "${src}"`, error);
+            onResponseError(error);
         }
     });
 
     if (info.config.downloadOK) {
+        notify(`downloading identified src scripts in "${info.readFile}"`);
+
         const downloads = R.map(dlSrcHlpr)(info.urls);
-        return Promise.all(downloads).then((downloads) => R.assoc('downloads', downloads, info));
+        const addDownloads = (d: [string, string][]): HtmlInfo => {
+            const urls = d.map((u) => u[0]);
+            const data = d.map((u) => u[1]);
+            const paths = urls.map((url) => getLocalPath(url, info.config));
 
+            const newInfo = R.compose(R.assoc('urls', urls), R.assoc('data', data), R.assoc('paths', paths))(info);
 
+            return newInfo as HtmlInfo;
+        }
+        return Promise.all(downloads).then(addDownloads);
     }
     else return Promise.resolve(info);
 }
@@ -171,38 +214,41 @@ const downloadSrcs = (info: HtmlInfo): Promise<HtmlInfo> => {
 // TODO: Make this into a promise.
 const makeDirs = (info: HtmlInfo) => {
     if (info.config.mkdirOK) {
-        const srcs = R.map((url: string) => getDownloadDir(url, info.config))(info.downloads.map((e) => e[0]));
+        notify(`making directories for scripts: "${info.urls.map((u) => path.basename(u)).join(', ')}"`);
 
-        //console.log("srcs", srcs);
-        const dirsToMake = R.map(path.dirname)(srcs);
+        const dirsToMake = info.paths.map(path.dirname);
 
-        //console.log("dirsToMake:", dirsToMake);
+        const writeDir = (dir: string) => {
+            notify(`    mkDir ${dir}`);
+            mkdirp.sync(dir);
+        };
 
-        dirsToMake.forEach((dir: string) => mkdirp(dir, function (err) {
-            if (err) console.error(err)
-            else console.log(`made dir ${dir}`);
-        }));
+        dirsToMake.forEach(writeDir);
+
+        if (dirsToMake.length == 0) notify(`    mkdir unnecessary`);
 
     }
     return info;
 }
 
 const writeFile = (path: string, data: string) => {
-    let file = fs.createWriteStream(path);
+    notify(`    writing ${path}`);
     try {
+        let file = fs.createWriteStream(path);
         file.write(data);
         file.end();
-        //console.log(`written: ${path}`);
+        notify(`    done ${path}`);
     } catch (error) {
-        console.error(error);
+        notify(`    write error ${path}`, error);
     }
+
 }
 
 const writeSrcs = (info: HtmlInfo) => {
+    notify('writing srcs');
 
 
-    info.downloads.forEach((d: [string, string]) => writeFile(getDownloadDir(d[0]), d[1]));
-    //console.log("writeSrcs", info);
+    R.zip(info.paths, info.data).forEach((d: [string, string]) => writeFile(d[0], d[1]));
 
     return info;
 }
@@ -210,24 +256,28 @@ const writeSrcs = (info: HtmlInfo) => {
 const modifyHtmlFile = (info: HtmlInfo) => {
 
     if (info.config.overwriteOK) {
+        notify(`modifying html of ${info.readFile}`);
 
-        const replaceSrcs = (html: string, mr: [RegExpExecArray, [string, string]][], index = 0): string => {
-            if (index >= mr.length) return html;
-            const modHtml = replaceSrcs(html, mr, index + 1); // modify last first.
-            const tuple = mr[index];
-            const exec = tuple[0];
-            const download = tuple[1];
-            const localDir = getDownloadDir(download[0]).split(path.sep).join('/');
-            const replaceStr = `<script src="${localDir}"></script>`;
+        const replaceSrcs = (html: string, info: HtmlInfo, index = 0): string => {
+            if (index >= info.matches.length) return html;
+            const modHtml = replaceSrcs(html, info, index + 1); // modify last first.
+            //console.log("modHtml", modHtml);
+            const exec = info.matches[index];
+            const localSrcPath = info.paths[index];
+            const localHtmlDir = path.dirname(info.writeFile);
+            const relPath = path.relative(localHtmlDir, localSrcPath).split(path.sep).join('/');
+
+            // console.log(`relPath is ${relPath} from '${localHtmlDir}' to '${localSrcPath}'`);
+
+            const replaceStr = `<script src="${relPath}"></script>`;
             const newHtml = modHtml.substring(0, exec.index) + replaceStr + modHtml.substr(exec.index + exec[0].length);
-
-
             return newHtml;
         }
 
-        const matchReplace = R.zip(info.matches, info.downloads);
+        const modifiedHtml = replaceSrcs(info.html, info);
 
-        const modifiedHtml = replaceSrcs(info.html, matchReplace);
+        if (modifiedHtml === info.html) notify("    html is unmodified");
+        if (!modifiedHtml || modifiedHtml == '') throw Error(`HTML was modified into empty string! It's likely that there is a bad regular expression in config.cdnMap Debug info:\n ${JSON.stringify(info)}`);
 
         return R.assoc('modifiedHtml', modifiedHtml, info);
 
@@ -237,30 +287,44 @@ const modifyHtmlFile = (info: HtmlInfo) => {
 
 const writeHtmlFile = (info: HtmlInfo) => {
 
-    if (info.config.overwriteOK) writeFile(info.file, info.modifiedHtml);
+    if (info.config.overwriteOK && info.modifiedHtml != info.html) {
+        notify(`writing modified HTML ${info.modifiedHtml}`);
+
+        if (info.modifiedHtml && info.modifiedHtml != '') writeFile(info.writeFile, info.modifiedHtml);
+        else throw Error(`Attempt to write empty string to ${info.writeFile}`);
+    }
 
     return info;
-
-
 }
 
-const main = (config: Config) => {
+//const testFuncs = (f: string, ...a: any[]) => {
+//    switch (f) {
+//        case 'readHtmlFile': return readHtmlFile(a[0], a[1]);
+//        case 'identifyScripts': return identifyScripts(a[0]);
+//        case 'processFile': return processFile;
+//        case 'downloadSrcs': return downloadSrcs;
+//        case 'makeDirs': return makeDirs;
+//        case 'writeSrcs': return writeSrcs;
+//        case 'modifyHtmlFile': return modifyHtmlFile;
+//        case 'writeHtmlFile': return writeHtmlFile;
+//        default:
+//            console.error(`unknown function '${f}'`);
+//            break;
+//    }
+//}
 
-}
-
-const processFile = (file: string) => readHtmlFile(file)
-    .then(identifySrcs)
+export const processFile = (file: string, config: any) => readHtmlFile(file, config)
+    .then(identifyScripts)
     .then(downloadSrcs)
     .then(makeDirs)
     .then(writeSrcs)
     .then(modifyHtmlFile)
     .then(writeHtmlFile)
-    //.then((html: string) => getTag(html))
-    .then((a: any) => { console.log(a); return 1; })
-    .catch((e: any) => console.error(e));
+    .then((info: HtmlInfo) => info) // emphasis
+    .catch((e: any) => { console.error(e); return 0; });
 
-exports.getDownloadDir = getDownloadDir;
-exports.processFile = processFile;
+export const defaultProcessFile = (file: string) => processFile(file, defaultConfig);
 
+//exports.processFile = processFile;
 
 require('make-runnable');
