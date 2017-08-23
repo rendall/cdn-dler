@@ -47,7 +47,8 @@ var defaultConfig = {
     ],
     downloadOK: true,
     overwriteOK: true,
-    mkdirOK: true
+    mkdirOK: true,
+    dirdotOK: false
 };
 var getLocalPath = function (url, config, i) {
     if (i === void 0) { i = 0; }
@@ -62,6 +63,8 @@ var getLocalPath = function (url, config, i) {
         var subdir = url.substr(exec.index + exec[0].length);
         var jsDir = (config.hasOwnProperty("jsDir")) ? config.jsDir : "";
         var normPath = path.normalize(jsDir + urlDir[1] + subdir).split('/').join(path.sep);
+        if (!config.dirdotOK && normPath.indexOf('.' + path.sep) >= 0)
+            throw Error("Dirdot: These settings will create this path '" + normPath + "'. A directory with a .at the end is difficult to delete for Windows users. If this is what you want, change the config setting 'dirdotOK' to true");
         return normPath;
     }
     else
@@ -142,13 +145,18 @@ var downloadSrcs = function (info) {
     if (info.config.downloadOK) {
         notify("downloading identified src scripts in \"" + info.readFile + "\"");
         var downloads = R.map(dlSrcHlpr)(info.urls);
-        var addDownloads = function (d) {
-            var urls = d.map(function (u) { return u[0]; });
-            var data = d.map(function (u) { return u[1]; });
-            var paths = urls.map(function (url) { return getLocalPath(url, info.config); });
-            var newInfo = R.compose(R.assoc('urls', urls), R.assoc('data', data), R.assoc('paths', paths))(info);
-            return newInfo;
-        };
+        var addDownloads = function (d) { return new Promise(function (resolve, reject) {
+            try {
+                var urls = d.map(function (u) { return u[0]; });
+                var data = d.map(function (u) { return u[1]; });
+                var paths = urls.map(function (url) { return getLocalPath(url, info.config); });
+                var newInfo = R.compose(R.assoc('urls', urls), R.assoc('data', data), R.assoc('paths', paths))(info);
+                resolve(newInfo);
+            }
+            catch (e) {
+                reject(e);
+            }
+        }); };
         return Promise.all(downloads).then(addDownloads);
     }
     else
@@ -228,8 +236,7 @@ exports.processFile = function (file, config) { return readHtmlFile(file, config
     .then(writeSrcs)
     .then(modifyHtmlFile)
     .then(writeHtmlFile)
-    .then(function (info) { return info; })
-    .catch(function (e) { console.error(e); return 0; }); };
+    .then(function (info) { return info; }); };
 exports.defaultProcessFile = function (file) { return exports.processFile(file, defaultConfig); };
 require('make-runnable');
 //# sourceMappingURL=index.js.map

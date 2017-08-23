@@ -7,8 +7,9 @@ import urlParser = require('url');
 import path = require('path');
 
 export class CdnDlerConfig extends Object {
-    jsDir?: string; // The root directory to write downloaded files to.
+    jsDir?: string; // The root directory to write downloaded js files to.
     cdnMap: [RegExp, string][]; // How to convert URLs to local directory structure.
+    dirdotOK: boolean;
     mkdirOK: boolean; // If it's okay to make directories, set this to true.
     downloadOK: boolean; // If it's okay to download files from the CDN and overwrite corresponding local files, set this to true.
     overwriteOK: boolean; // if it's okay to overwrite HTML files, set this to true.
@@ -42,7 +43,6 @@ export class HtmlInfo {
 const notify = (msg: string, ...a: any[]) => { };//console.log(msg, ...a);
 
 
-//TODO: take this out, put it in a config file.
 const defaultConfig: CdnDlerConfig = {
     // jsDir is an optional variable that tells the module where to place all js files. Any other instruction is relative to this file.
     // if jsDir is not defined, then instructions will be defined relative to the current working directory.
@@ -80,7 +80,8 @@ const defaultConfig: CdnDlerConfig = {
 
     downloadOK: true,
     overwriteOK: true,
-    mkdirOK: true
+    mkdirOK: true,
+    dirdotOK: false // since a directory ending in a dot can be such a pain in the ass, and it can accidentally happen with this module if cdnMap is incorrect, this is a failsafe to ensure it cannot happen.  Will throw an error.  If you need that, for some reason, set this to true.
 }
 
 const getLocalPath = (url: string, config: CdnDlerConfig, i: number = 0): string => {
@@ -94,9 +95,12 @@ const getLocalPath = (url: string, config: CdnDlerConfig, i: number = 0): string
         const dir = urlDir[1];
         const subdir = url.substr(exec.index + exec[0].length);
         const jsDir = (config.hasOwnProperty("jsDir")) ? config.jsDir : "";
-
-
         const normPath = path.normalize(jsDir + urlDir[1] + subdir).split('/').join(path.sep);
+
+        //console.log("normPath:", normPath);
+
+        if (!config.dirdotOK && normPath.indexOf('.' + path.sep) >= 0) throw Error(`Dirdot: These settings will create this path '${normPath}'. A directory with a .at the end is difficult to delete for Windows users. If this is what you want, change the config setting 'dirdotOK' to true`);
+
         return normPath;
     }
     else return getLocalPath(url, config, i + 1);
@@ -115,7 +119,6 @@ const readHtmlFile = (file: string, config: CdnDlerConfig): Promise<HtmlInfo> =>
             if (err) return onError(err);
             else if (!verifyHTML(data)) return Promise.reject(`${file} contains invalid or no data`);
             else return resolve(R.assoc('html', data, htmlInfo));
-
         }
         const onError = (error: any) => reject(error);
 
@@ -195,15 +198,21 @@ const downloadSrcs = (info: HtmlInfo): Promise<HtmlInfo> => {
         notify(`downloading identified src scripts in "${info.readFile}"`);
 
         const downloads = R.map(dlSrcHlpr)(info.urls);
-        const addDownloads = (d: [string, string][]): HtmlInfo => {
-            const urls = d.map((u) => u[0]);
-            const data = d.map((u) => u[1]);
-            const paths = urls.map((url) => getLocalPath(url, info.config));
+        const addDownloads = (d: [string, string][]): Promise<HtmlInfo> => new Promise((resolve: Function, reject: Function) => {
+ 
+            try {
+                const urls = d.map((u) => u[0]);
+                const data = d.map((u) => u[1]);
+                const paths = urls.map((url) => getLocalPath(url, info.config));
+                const newInfo = R.compose(R.assoc('urls', urls), R.assoc('data', data), R.assoc('paths', paths))(info);
 
-            const newInfo = R.compose(R.assoc('urls', urls), R.assoc('data', data), R.assoc('paths', paths))(info);
+                resolve(newInfo);
+            } catch (e) {
+                //console.log("addDownloads error:");
+                reject(e);
 
-            return newInfo as HtmlInfo;
-        }
+            }
+        });
         return Promise.all(downloads).then(addDownloads);
     }
     else return Promise.resolve(info);
@@ -321,7 +330,7 @@ export const processFile = (file: string, config: any) => readHtmlFile(file, con
     .then(modifyHtmlFile)
     .then(writeHtmlFile)
     .then((info: HtmlInfo) => info) // emphasis
-    .catch((e: any) => { console.error(e); return 0; });
+    //.catch((e: any) => { console.error(e); return 0; });
 
 export const defaultProcessFile = (file: string) => processFile(file, defaultConfig);
 
