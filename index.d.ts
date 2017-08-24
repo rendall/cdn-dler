@@ -1,10 +1,14 @@
 export declare class CdnDlerConfig extends Object {
-    jsDir?: string;
+    js?: string;
     cdnMap: [RegExp, string][];
     dirdotOK: boolean;
     mkdirOK: boolean;
     downloadOK: boolean;
     overwriteOK: boolean;
+    verbose: boolean;
+    input?: string | string[];
+    outDir?: string;
+    outFile?: string;
 }
 export declare class HtmlInfo {
     readFile: string;
@@ -19,4 +23,4 @@ export declare class HtmlInfo {
     constructor(config: CdnDlerConfig, readFile: string, writeFile: string);
 }
 export declare const processFile: (file: string, config: any) => Promise<HtmlInfo>;
-export declare const defaultProcessFile: (file: string) => Promise<HtmlInfo>;
+export declare const run: (config?: any) => Promise<void>;

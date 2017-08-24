@@ -8,35 +8,41 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rendall/link-dler.git"
+    "url": "git+https://github.com/rendall/cdn-dler.git"
   },
   "keywords": [
+    "cdn",
+    "assets",
+    "download",
+    "fallback",
     "html",
     "script",
-    "link",
-    "cdn",
-    "download",
-    "fallback"
+    "link"
   ],
   "author": "Rendall Koski <rendall@gmail.com> (http://rendall.tv)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/rendall/link-dler/issues"
+    "url": "https://github.com/rendall/cdn-dler/issues"
   },
-  "homepage": "https://github.com/rendall/link-dler#readme",
+  "homepage": "https://github.com/rendall/cdn-dler#readme",
   "devDependencies": {
+    "@types/colors": "^1.1.3",
+    "@types/diff": "^3.2.1",
+    "@types/glob": "^5.0.32",
     "@types/mkdirp": "^0.5.1",
     "@types/mocha": "^2.2.42",
     "@types/node": "^8.0.24",
     "@types/ramda": "^0.24.7",
     "@types/rimraf": "^2.0.2",
-    "make-runnable": "^1.3.6",
-    "mocha": "^3.5.0",
-    "ramda": "^0.24.1",
-    "rimraf": "^2.6.1",
-    "typescript": "^2.4.2"
+    "colors": "^1.1.2",
+    "diff": "^3.2.1",
+    "typescript": "^2.5.1"
   },
   "dependencies": {
-    "mkdirp": "^0.5.1"
+    "glob": "^7.1.2",
+    "make-runnable": "^1.3.6",
+    "mkdirp": "^0.5.1",
+    "ramda": "^0.24.1",
+    "rimraf": "^2.6.1"
   }
 }
