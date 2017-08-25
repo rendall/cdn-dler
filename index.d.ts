@@ -1,4 +1,4 @@
-export declare class CdnDlerConfig extends Object {
+export declare class Config extends Object {
     js?: string;
     cdnMap: [RegExp, string][];
     dirdotOK: boolean;
@@ -16,11 +16,11 @@ export declare class HtmlInfo {
     html: string;
     modifiedHtml: string;
     matches: RegExpExecArray[];
-    config: CdnDlerConfig;
+    config: Config;
     urls: string[];
     paths: string[];
     data: string[];
-    constructor(config: CdnDlerConfig, readFile: string, writeFile: string);
+    constructor(config: Config, readFile: string, writeFile: string);
 }
-export declare const processFile: (file: string, config: any) => Promise<HtmlInfo>;
-export declare const run: (config?: any) => Promise<void>;
+export declare const processFile: (file: string, config: Config) => Promise<HtmlInfo>;
+export declare const run: (config?: any) => Promise<void | HtmlInfo[]>;

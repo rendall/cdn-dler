@@ -1,1 +1,1 @@
-export declare const test: () => string;
+export declare const test: (params?: any) => string;
