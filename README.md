@@ -1,5 +1,5 @@
 # cdnler
-**CDN** down**L**oad**ER** (pronounced kindler)
+**CDN** down**L**oad**ER**
 
 Cdnler looks at html files for links to javascript assets hosted externally. It then optionally downloads those assets. It then optionally outputs html with local references.
 
