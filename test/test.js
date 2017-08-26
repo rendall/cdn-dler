@@ -79,6 +79,9 @@ var defaultSetup = function (ts) { return new Promise(function (resolve, reject)
         .then(function () { return resolve(true); })
         .catch(function (err) { return reject(err); });
 }); };
+var defaultReject = function (reason) {
+    console.log("Error occured during run:", reason);
+};
 var defaultCleanup = function () { return new Promise(function (resolve, reject) {
     removeDir(test_dir).then(function (isSuccess) { return resolve(isSuccess); }, function (reason) { return reject(reason); });
 }); };
@@ -86,13 +89,28 @@ var runTestSuite = function (ts) { return new Promise(function (resolve, reject)
     start(ts)
         .then(ts.setup)
         .then(function () { return cdnler.run(ts.config); })
-        .then(ts.evaluate)
-        .catch(function (err) { return console.error(err); })
+        .then(ts.evaluate, ts.reject)
+        .catch(function (reason) { console.error(red(ts.name + " Error: " + reason)); throw Error(reason); })
         .then(function () { return complete(ts); })
         .then(ts.cleanup)
         .then(function () { return resolve(true); })
         .catch(function () { return resolve(false); });
 }); };
+var displayResults = function (tests, results, i) {
+    if (i === void 0) { i = 0; }
+    if (i >= tests.length)
+        return;
+    console.log(tests[i].name + "\t" + (results[i] ? green('ok') : red('fail')));
+    displayResults(tests, results, i + 1);
+};
+var evaluateMustError = function (errorMessage) { return function (info) { return new Promise(function (resolve, reject) {
+    reject(errorMessage);
+}); }; };
+var rejectionIsOK = function (expected) { return function (reason) {
+    var errMessage = R.has('message', reason) ? reason.message : reason;
+    if (!errMessage.startsWith(expected))
+        throw reason;
+}; };
 var evaluatePrototypeRun = function (info) { return new Promise(function (resolve, reject) {
     if (Array.isArray(info)) {
         var onResolve = function (a) { return resolve(a); };
@@ -105,23 +123,26 @@ var evaluatePrototypeRun = function (info) { return new Promise(function (resolv
         resolve(true);
     }
 }); };
-var displayResults = function (tests, results, i) {
-    if (i === void 0) { i = 0; }
-    if (i >= tests.length)
-        return;
-    console.log(tests[i].name + "\t" + (results[i] ? green('ok') : red('fail')));
-    displayResults(tests, results, i + 1);
-};
 exports.test = function (params) {
     var proto = {
         name: "Prototype use case",
         purpose: "A straight run of cdnler's typical use.",
         config: R.merge(test_config, params),
         evaluate: evaluatePrototypeRun,
+        reject: defaultReject,
         setup: defaultSetup,
         cleanup: defaultCleanup
     };
-    var suites = [proto];
+    var dirDot = {
+        name: "dir./ prevention",
+        purpose: "Prevent an accidental dot at the end of a directory name",
+        config: R.merge(test_config, { js: test_dir + "/js/vendor./" }),
+        evaluate: evaluateMustError("This should not have passed. Dirdot was not captured."),
+        reject: rejectionIsOK("Dirdot:"),
+        setup: defaultSetup,
+        cleanup: defaultCleanup
+    };
+    var suites = [proto, dirDot];
     Promise.all(R.map(runTestSuite)(suites)).then(function (a) { console.log('Suite test results:'); return a; }).then(function (a) { return displayResults(suites, a); });
     return '';
 };

@@ -7,6 +7,7 @@ export declare class Config extends Object {
     overwriteOK: boolean;
     verbose: boolean;
     input?: string | string[];
+    output?: string;
     outDir?: string;
     outFile?: string;
 }

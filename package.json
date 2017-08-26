@@ -1,11 +1,12 @@
 {
   "name": "cdnler",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Takes html files with scripts referencing external Content Delivery Networks (CDNs), downloads those assets locally, and then saves a version of that html file referencing the local assets.",
   "main": "index.js",
   "scripts": {
     "test": "node test/test.js test"
   },
+  "bin": "./index.js",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/rendall/cdnler.git"

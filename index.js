@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -18,7 +19,7 @@ var path = require("path");
 var glob = require("glob");
 var assert = require("assert");
 var scriptPtrn = /(<script.*?src=["']((?:https?:)?\/\/[a-z0-9@\/\.\-]+\.[a-z]{2,4}(?![a-z])(?:\/[a-z\-\/\.\?=0-9\&_]*)?)["'].*?>\s?<\/script>)/g;
-var helpMessage = "\n -- help         This help message.\n -- config       (optional) Specify a config file in JSON format, an \n                    object with properties containing the following \n                    values:\n -- input        (required) The filename or directory of html files to use \n                    as input.  Can be used multiple times in a single \n                    command.\n                     e.g:  -- input index.html\n                     e.g:  -- input ./*.html\n                     e.g:  -- input index.html --input about.html\n -- outDir       The output directory for modified html files. One of \n                    either --outDir or --outFile is required.\n -- outFile      Alternatively, rather than outDir, can specify a single \n                    output file. In this case, --input must specify a \n                    single file only.\n -- js           The directory into which CDN javscript assets are to be \n                    downloaded and stored. \n -- mkdirOK      By default, Cndler will make any directories needed. \n                    If it is not okay for Cndler to make directories, set \n                    this to false. Cndler will throw an error if 'false' \n                    and the directory does not exist.\n -- downloadOK   By default, Cndler will download CDN assets referenced \n                    in the input html file(s), overwriting local copies. \n                    If it is not okay to download files from the CDNs and \n                    overwrite corresponding local files, set this to false.\n -- overwriteOK  By default, Cndler will *not* overwrite input html files \n                    with modifications, but will rather write them to an \n                    output directory. If the input file is the same as the \n                    output file, this must be set to true. \n                    Default is false.\n -- verbose      Setting this to true will spam output, \n                    including the *content* of downloaded files. \n                    Default is false.\n -- cdnMap       This maps a URL to a local directory, the local reference \n                    that will be used in modified html files. \n                    Can be used multiple times in a single command.  \n                    It is comprised of two quoted strings \n                    separated by a comma.  The first string is part \n                    of a URL. Everything to the left of the first string \n                    in the URL will be replaced by the second string, \n                    which represents a local directory underneath \n                    the asset root directory.\n                     e.g. The parameters \n                        --js ./js/vendor \n                        --cdnMap \"cdn.example.com\",\"./example\" \n                     will map the URL \n                     https://cdn.example.com/js-fwork/1.0/example.js \n                     to the local path \n                     'js/vendor/example/js-fwork/1.0/example.js', \n                     and the src attribute will be changed \n                     in the modified html.";
+var helpMessage = "\n -- help         This help message.\n -- config       (optional) Specify a config file in JSON format, an \n                    object with properties containing the following \n                    values:\n -- input        (required) The filename or directory of html files to use \n                    as input.  Can be used multiple times in a single \n                    command.\n                     e.g:  -- input index.html\n                     e.g:  -- input ./*.html\n                     e.g:  -- input index.html --input about.html\n -- output      (required) The html filename or directory into which\n                    cdnler will write altered html.\n -- js           The directory into which CDN javscript assets are to be \n                    downloaded and stored. \n -- mkdirOK      By default, Cndler will make any directories needed. \n                    If it is not okay for Cndler to make directories, set \n                    this to false. Cndler will throw an error if 'false' \n                    and the directory does not exist.\n -- downloadOK   By default, Cndler will download CDN assets referenced \n                    in the input html file(s), overwriting local copies. \n                    If it is not okay to download files from the CDNs and \n                    overwrite corresponding local files, set this to false.\n -- overwriteOK  By default, Cndler will *not* overwrite input html files \n                    with modifications, but will rather write them to an \n                    output directory. If the input file is the same as the \n                    output file, this must be set to true. \n                    Default is false.\n -- verbose      Setting this to true will spam output, \n                    including the *content* of downloaded files. \n                    Default is false.\n -- cdnMap       This maps a URL to a local directory, the local reference \n                    that will be used in modified html files. \n                    Can be used multiple times in a single command.  \n                    It is comprised of two quoted strings \n                    separated by a comma.  The first string is part \n                    of a URL. Everything to the left of the first string \n                    in the URL will be replaced by the second string, \n                    which represents a local directory underneath \n                    the asset root directory.\n                     e.g. The parameters \n                        --js ./js/vendor \n                        --cdnMap \"cdn.example.com\",\"./example\" \n                     will map the URL \n                     https://cdn.example.com/js-fwork/1.0/example.js \n                     to the local path \n                     'js/vendor/example/js-fwork/1.0/example.js', \n                     and the src attribute will be changed \n                     in the modified html.";
 var Config = (function (_super) {
     __extends(Config, _super);
     function Config() {
@@ -36,6 +37,7 @@ var prototypeConfig = {
     overwriteOK: false,
     verbose: false,
     input: '',
+    output: '',
     outDir: '',
     outFile: ''
 };
@@ -311,11 +313,18 @@ var verifyConfig = function (config) {
     notify("verifyConfig", config, config);
     var hasInput = R.has('input', config);
     assert.ok(hasInput, "Config: \"input\" must be defined either in the config file or as a command-line parameter.");
+    var hasOutput = R.has('output', config);
     var hasOutDir = R.has('outDir', config);
     var hasOutFile = R.has('outFile', config);
-    assert.ok(hasOutFile || hasOutDir, "Config: 'outFile' or 'outDir' must be defined.");
-    var isInputArray = Array.isArray(config.input);
-    assert.ok((isInputArray && hasOutDir) || !isInputArray, "Config: If 'input' is an array, 'outDir' must be defined.");
+    assert.ok(hasOutput || hasOutFile || hasOutDir, "Config: 'output' must be defined.");
+    var isInputArray = Array.isArray(config.input) || glob.sync(config.input).length > 1;
+    if (hasOutput) {
+        var output = R.prop('output', config);
+        var outputIsDir = path.extname(output) === '';
+        assert.ok((isInputArray && outputIsDir) || !isInputArray, "Config: If 'input' is more than one file, 'output' must be a directory.");
+    }
+    else
+        assert.ok((isInputArray && hasOutDir) || !isInputArray, "Config: If 'input' is more than one file, 'output' must be a directory.");
     var allowedProps = R.keys(prototypeConfig);
     var configProps = R.keys(config);
     var extraProps = R.difference(configProps, allowedProps);

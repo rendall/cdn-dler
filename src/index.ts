@@ -1,4 +1,4 @@
-
+#!/usr/bin/env node
 import R = require('ramda');
 import mkdirp = require('mkdirp');
 import fs = require('fs');
@@ -18,11 +18,8 @@ const helpMessage: string = `
                      e.g:  -- input index.html
                      e.g:  -- input ./*.html
                      e.g:  -- input index.html --input about.html
- -- outDir       The output directory for modified html files. One of 
-                    either --outDir or --outFile is required.
- -- outFile      Alternatively, rather than outDir, can specify a single 
-                    output file. In this case, --input must specify a 
-                    single file only.
+ -- output      (required) The html filename or directory into which
+                    cdnler will write altered html.
  -- js           The directory into which CDN javscript assets are to be 
                     downloaded and stored. 
  -- mkdirOK      By default, Cndler will make any directories needed. 
@@ -59,6 +56,12 @@ const helpMessage: string = `
                      'js/vendor/example/js-fwork/1.0/example.js', 
                      and the src attribute will be changed 
                      in the modified html.`;
+//--outDir       The output directory for modified html files.One of 
+//either--outDir or --outFile is required.
+// -- outFile      Alternatively, rather than outDir, can specify a single 
+//output file.In this case, --input must specify a 
+//single file only.
+
 
 export class Config extends Object {
     js?: string; // The root directory to write downloaded js files to.
@@ -69,6 +72,7 @@ export class Config extends Object {
     overwriteOK: boolean; // if it's okay to overwrite HTML files, set this to true.
     verbose: boolean;
     input?: string | string[];
+    output?: string;
     outDir?: string;
     outFile?: string;
 }
@@ -82,6 +86,7 @@ const prototypeConfig: Config = { //
     overwriteOK: false,
     verbose: false,
     input: '',
+    output: '',
     outDir: '',
     outFile: ''
 }
@@ -410,12 +415,18 @@ const verifyConfig = (config: Config) => {
     const hasInput = R.has('input', config);
     assert.ok(hasInput, `Config: "input" must be defined either in the config file or as a command-line parameter.`);
 
+    const hasOutput = R.has('output', config);
     const hasOutDir = R.has('outDir', config);
     const hasOutFile = R.has('outFile', config);
-    assert.ok(hasOutFile || hasOutDir, "Config: 'outFile' or 'outDir' must be defined.");
+    assert.ok(hasOutput || hasOutFile || hasOutDir, "Config: 'output' must be defined.");
 
-    const isInputArray = Array.isArray(config.input);
-    assert.ok((isInputArray && hasOutDir) || !isInputArray, "Config: If 'input' is an array, 'outDir' must be defined.");
+    const isInputArray = Array.isArray(config.input) || glob.sync(config.input!).length > 1;
+    if (hasOutput) {
+        const output:string = R.prop('output', config);
+        const outputIsDir = path.extname(output) === '';
+        assert.ok((isInputArray && outputIsDir) || !isInputArray, "Config: If 'input' is more than one file, 'output' must be a directory.");
+    }  
+    else assert.ok((isInputArray && hasOutDir) || !isInputArray, "Config: If 'input' is more than one file, 'output' must be a directory.");
 
     const allowedProps = R.keys(prototypeConfig);
     const configProps = R.keys(config);
@@ -437,9 +448,9 @@ const configTransform = {
     js: normPath,
     cdnMap: normCdnMap,
     dirdotOK: normBoolean,
-    mkdirOK: normBoolean, // If it's okay to make directories, set this to true.
-    downloadOK: normBoolean, // If it's okay to download files from the CDN and overwrite corresponding local files, set this to true.
-    overwriteOK: normBoolean, // if it's okay to overwrite HTML files, set this to true.
+    mkdirOK: normBoolean, 
+    downloadOK: normBoolean, 
+    overwriteOK: normBoolean, 
     verbose: normBoolean,
     outDir: normPath,
 }
@@ -475,6 +486,9 @@ const configure = (config?: any): Promise<Config | void> =>
 const showError = (error: any) => console.error(error);
 
 export const run = (config?: any) => configure(config).then(process, showError);
+
+//module.exports = (config?: any) => { return run(config).then(() => { return "Complete." }); };
+
 
 require('make-runnable/custom')({
     printOutputFrame: false

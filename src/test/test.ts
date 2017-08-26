@@ -13,6 +13,7 @@ class TestSuite {
     config: cdnler.Config;
     setup: (ts: TestSuite) => Promise<boolean>;
     evaluate: (info: cdnler.HtmlInfo[]) => Promise<boolean>; // return 'true' if all tests pass
+    reject: (error: any) => void;
     cleanup: () => Promise<boolean>;
 }
 
@@ -87,6 +88,10 @@ const defaultSetup = (ts: TestSuite) => new Promise<boolean>((resolve, reject) =
         .then(() => resolve(true))
         .catch((err) => reject(err)));
 
+const defaultReject = (reason: any) => {
+    console.log("Error occured during run:", reason);
+
+}
 
 const defaultCleanup = () => new Promise<boolean>((resolve, reject) => {
     removeDir(test_dir).then((isSuccess: boolean) => resolve(isSuccess), (reason) => reject(reason))
@@ -96,21 +101,40 @@ const runTestSuite = (ts: TestSuite) => new Promise<boolean>((resolve, reject) =
     start(ts)
         .then(ts.setup)
         .then(() => cdnler.run(ts.config))
-        .then(ts.evaluate)
-        .catch((err) => console.error(err))
+        .then(ts.evaluate, ts.reject)
+        .catch((reason) => { console.error(red(`${ts.name} Error: ${reason}`)); throw Error(reason); })
         .then(() => complete(ts))
         .then(ts.cleanup)
         .then(() => resolve(true))
         .catch(() => resolve(false));
 });
 
+const displayResults = (tests: TestSuite[], results: boolean[], i = 0) => {
+
+    if (i >= tests.length) return;
+
+    console.log(`${tests[i].name}\t${results[i] ? green('ok') : red('fail')}`);
+
+    displayResults(tests, results, i + 1);
+
+
+}
+
+// Use this evaluation when the evaluation should error.
+const evaluateMustError = (errorMessage: string) => (info: cdnler.HtmlInfo[] | cdnler.HtmlInfo) => new Promise<boolean>((resolve, reject) => {
+    reject(errorMessage);
+});
+const rejectionIsOK = (expected:string) => (reason: any) => {
+    const errMessage:string = R.has('message', reason) ? reason.message : reason;
+    if (!errMessage.startsWith(expected))  throw reason;
+}
 // Specific tests.
 
 // Prototypical Use Case Test Suite.
 // return 'true' only if all tests pass
 const evaluatePrototypeRun = (info: cdnler.HtmlInfo[] | cdnler.HtmlInfo) => new Promise<boolean>((resolve, reject) => {
     if (Array.isArray(info)) {
-        const onResolve = (a:any) => resolve(a);
+        const onResolve = (a: any) => resolve(a);
         const onReject = (e: any) => reject(e);
         Promise.all(R.map(evaluatePrototypeRun)(info)).then(onResolve, onReject);
     }
@@ -125,16 +149,7 @@ const evaluatePrototypeRun = (info: cdnler.HtmlInfo[] | cdnler.HtmlInfo) => new 
 
 });
 
-const displayResults = (tests: TestSuite[], results: boolean[], i = 0) => {
 
-    if (i >= tests.length) return;
-
-    console.log(`${tests[i].name}\t${results[i] ? green('ok') : red('fail')}`);
-
-    displayResults(tests, results, i + 1);
-
-
-}
 
 export const test = (params?: any) => {
 
@@ -143,18 +158,31 @@ export const test = (params?: any) => {
         purpose: "A straight run of cdnler's typical use.",
         config: R.merge(test_config, params),
         evaluate: evaluatePrototypeRun,
+        reject: defaultReject,
         setup: defaultSetup,
         cleanup: defaultCleanup
     };
 
     // create a test that makes sure /directory./ (dirdot) does not happen.
+    const dirDot: TestSuite = {
+        name: "dir./ prevention",
+        purpose: "Prevent an accidental dot at the end of a directory name",
+        config: R.merge(test_config, { js: `${test_dir}/js/vendor./` }),
+        evaluate: evaluateMustError("This should not have passed. Dirdot was not captured."),
+        reject: rejectionIsOK("Dirdot:"),
+        setup: defaultSetup,
+        cleanup: defaultCleanup
+    };
+
+
     // create a test to make sure that external config file works.
     // test glob input
     // test input as [] array
+
     // support css and other assets
     // support fallback
 
-    const suites = [proto];
+    const suites = [proto, dirDot];
 
     Promise.all(R.map(runTestSuite)(suites)).then((a) => { console.log('Suite test results:'); return a }).then((a) => displayResults(suites, a));
     return '';
