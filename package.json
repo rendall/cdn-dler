@@ -1,14 +1,14 @@
 {
-  "name": "cdn-dler",
+  "name": "cdnler",
   "version": "1.0.0",
-  "description": "Parses an html file for links to assets hosted on a Content Delivery Network (CDN). Downloads those files locally. Then, either replaces those links or creates a local fallback.",
+  "description": "Takes html files with scripts referencing external Content Delivery Networks (CDNs), downloads those assets locally, and then saves a version of that html file referencing the local assets.",
   "main": "index.js",
   "scripts": {
     "test": "node test/test.js test"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rendall/cdn-dler.git"
+    "url": "git+https://github.com/rendall/cdnler.git"
   },
   "keywords": [
     "cdn",
@@ -22,9 +22,9 @@
   "author": "Rendall Koski <rendall@gmail.com> (http://rendall.tv)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/rendall/cdn-dler/issues"
+    "url": "https://github.com/rendall/cdnler/issues"
   },
-  "homepage": "https://github.com/rendall/cdn-dler#readme",
+  "homepage": "https://github.com/rendall/cdnler#readme",
   "devDependencies": {
     "@types/colors": "^1.1.3",
     "@types/diff": "^3.2.1",

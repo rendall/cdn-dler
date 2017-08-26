@@ -118,6 +118,7 @@ const defaultConfig: Config = {
     js: "./js/",
     cdnMap: [[/maxcdn\.bootstrapcdn\.com\//, "./"],
     [/cdnjs\.cloudflare\.com\/ajax\/libs\//, './'],
+    [/d3js.org\//, './'],
     [/cdn\.jsdelivr\.net\/npm\//, './'],
     [/cdn\.jsdelivr\.net\//, './'],
     [/code\.jquery\.com\//, "./jquery/"],
@@ -310,7 +311,7 @@ const writeSrcs = (info: HtmlInfo) => {
     return info;
 }
 
-const canOverwrite = (info: HtmlInfo):boolean => {
+const canOverwrite = (info: HtmlInfo): boolean => {
     const isFileOverwrite = info.readFile == info.writeFile;
     const isHtmlModified = info.html != info.modifiedHtml;
 

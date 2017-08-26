@@ -62,6 +62,7 @@ var defaultConfig = {
     js: "./js/",
     cdnMap: [[/maxcdn\.bootstrapcdn\.com\//, "./"],
         [/cdnjs\.cloudflare\.com\/ajax\/libs\//, './'],
+        [/d3js.org\//, './'],
         [/cdn\.jsdelivr\.net\/npm\//, './'],
         [/cdn\.jsdelivr\.net\//, './'],
         [/code\.jquery\.com\//, "./jquery/"],
