@@ -115,6 +115,7 @@ export class HtmlInfo {
 
 }
 
+const isDir = (pathName:string) => path.extname(pathName) === '';
 const isVerbose = (config: Config) => R.prop('verbose', config) == true;
 const notify = (msg: string, config: Config, ...a: any[]) => isVerbose(config) ? console.log(msg, ...a) : null;
 const normPath = (p: string) => path.extname(p) != '' ? p : p + (p.endsWith('/') ? '' : '/');
@@ -122,13 +123,13 @@ const normBoolean = (b: string | boolean) => (typeof b == 'string') ? b === 'fal
 const defaultConfig: Config = {
     js: "./js/",
     cdnMap: [[/maxcdn\.bootstrapcdn\.com\//, "./"],
-            [/cdnjs\.cloudflare\.com\/ajax\/libs\//, './'],
-            [/d3js.org\//, './'],
-            [/cdn\.jsdelivr\.net\/npm\//, './'],
-            [/cdn\.jsdelivr\.net\//, './'],
-            [/code\.jquery\.com\//, "./jquery/"],
-            [/ajax\.googleapis\.com\/ajax\/libs\//, './'],
-            [/unpkg\.com\//, './']],
+    [/cdnjs\.cloudflare\.com\/ajax\/libs\//, './'],
+    [/d3js.org\//, './'],
+    [/cdn\.jsdelivr\.net\/npm\//, './'],
+    [/cdn\.jsdelivr\.net\//, './'],
+    [/code\.jquery\.com\//, "./jquery/"],
+    [/ajax\.googleapis\.com\/ajax\/libs\//, './'],
+    [/unpkg\.com\//, './']],
     downloadOK: true,
     overwriteOK: false,
     mkdirOK: true,
@@ -162,7 +163,10 @@ const readHtmlFile = (readFile: string, config: Config): Promise<HtmlInfo> => {
     notify(`using config`, config, config);
     notify(`reading HTML file "${readFile}"`, config);
 
-    const writeFile: string = config.outFile == undefined ? config.outDir + path.basename(readFile) : config.outFile;
+    const writeFile: string = config.outFile !== undefined ? config.outFile :
+        config.outDir !== undefined ?
+            normPath(config.outDir) + path.basename(readFile) : 
+                isDir(config.output!)? normPath(config.output!) + path.basename(readFile) : config.output!;
 
     if (writeFile == readFile && !config.overwriteOK) return Promise.reject(new Error(`To overwrite ${readFile}, set 'overwriteOK' in config or parameters to 'true'`));
 
@@ -297,15 +301,19 @@ const readFile = (file: string) => new Promise(
         fs.readFile(file, 'utf8', (err, data) => err == null ? resolve(data) : reject(err)));
 
 
-const writeFile = (path: string, data: string, config: Config) => {
-    notify(`    writing ${path}`, config);
+const writeFile = (filePath: string, data: string, config: Config) => {
+    notify(`    writing ${filePath}`, config);
+    // ensure directory exists
+    const dir = path.dirname(filePath);
+
     try {
-        let file = fs.createWriteStream(path);
+        mkdirp.sync(dir);
+        let file = fs.createWriteStream(filePath);
         file.write(data);
         file.end();
-        notify(`    done ${path}`, config);
+        notify(`    done ${filePath}`, config);
     } catch (error) {
-        notify(`    write error ${path}`, config, error);
+        notify(`    write error ${filePath}`, config, error);
     }
 }
 
@@ -398,12 +406,15 @@ const getFilesInDir = (dir: string) => new Promise<string[]>((resolve: Function,
 
 const getInputFiles = (config: Config) => {
     const dirs = Array.isArray(config.input) ? config.input : [config.input!];
+    notify('getting files:', config, dirs);
+
     const promises = R.map(getFilesInDir)(dirs);
     return Promise.all(promises).then((a) => R.flatten(a));
 }
 
 const process = (config: Config) => {
     return getInputFiles(config).then((files: any[]) => {
+        notify('getFiles', config, files);
         const flipPF = (config: Config, file: string) => processFile(file, config);
         const promises = R.map(R.curry(flipPF)(config))(files);
         return Promise.all(promises);
@@ -423,10 +434,9 @@ const verifyConfig = (config: Config) => {
 
     const isInputArray = Array.isArray(config.input) || glob.sync(config.input!).length > 1;
     if (hasOutput) {
-        const output:string = R.prop('output', config);
-        const outputIsDir = path.extname(output) === '';
-        assert.ok((isInputArray && outputIsDir) || !isInputArray, "Config: If 'input' is more than one file, 'output' must be a directory.");
-    }  
+        const output: string = R.prop('output', config);
+        assert.ok((isInputArray && isDir(output)) || !isInputArray, "Config: If 'input' is more than one file, 'output' must be a directory.");
+    }
     else assert.ok((isInputArray && hasOutDir) || !isInputArray, "Config: If 'input' is more than one file, 'output' must be a directory.");
 
     const allowedProps = R.keys(prototypeConfig);
@@ -449,9 +459,9 @@ const configTransform = {
     js: normPath,
     cdnMap: normCdnMap,
     dirdotOK: normBoolean,
-    mkdirOK: normBoolean, 
-    downloadOK: normBoolean, 
-    overwriteOK: normBoolean, 
+    mkdirOK: normBoolean,
+    downloadOK: normBoolean,
+    overwriteOK: normBoolean,
     verbose: normBoolean,
     outDir: normPath,
 }

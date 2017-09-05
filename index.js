@@ -50,6 +50,7 @@ var HtmlInfo = (function () {
     return HtmlInfo;
 }());
 exports.HtmlInfo = HtmlInfo;
+var isDir = function (pathName) { return path.extname(pathName) === ''; };
 var isVerbose = function (config) { return R.prop('verbose', config) == true; };
 var notify = function (msg, config) {
     var a = [];
@@ -68,7 +69,8 @@ var defaultConfig = {
         [/cdn\.jsdelivr\.net\/npm\//, './'],
         [/cdn\.jsdelivr\.net\//, './'],
         [/code\.jquery\.com\//, "./jquery/"],
-        [/ajax\.googleapis\.com\/ajax\/libs\//, './']],
+        [/ajax\.googleapis\.com\/ajax\/libs\//, './'],
+        [/unpkg\.com\//, './']],
     downloadOK: true,
     overwriteOK: false,
     mkdirOK: true,
@@ -98,7 +100,10 @@ var verifyHTML = function (file) { return (file && file != ''); };
 var readHtmlFile = function (readFile, config) {
     notify("using config", config, config);
     notify("reading HTML file \"" + readFile + "\"", config);
-    var writeFile = config.outFile == undefined ? config.outDir + path.basename(readFile) : config.outFile;
+    var writeFile = config.outFile !== undefined ? config.outFile :
+        config.outDir !== undefined ?
+            normPath(config.outDir) + path.basename(readFile) :
+            isDir(config.output) ? normPath(config.output) + path.basename(readFile) : config.output;
     if (writeFile == readFile && !config.overwriteOK)
         return Promise.reject(new Error("To overwrite " + readFile + ", set 'overwriteOK' in config or parameters to 'true'"));
     notify("will write to " + writeFile, config);
@@ -212,16 +217,18 @@ var fileExists = function (file, rejectIfNotExists) {
 var readFile = function (file) { return new Promise(function (resolve, reject) {
     return fs.readFile(file, 'utf8', function (err, data) { return err == null ? resolve(data) : reject(err); });
 }); };
-var writeFile = function (path, data, config) {
-    notify("    writing " + path, config);
+var writeFile = function (filePath, data, config) {
+    notify("    writing " + filePath, config);
+    var dir = path.dirname(filePath);
     try {
-        var file = fs.createWriteStream(path);
+        mkdirp.sync(dir);
+        var file = fs.createWriteStream(filePath);
         file.write(data);
         file.end();
-        notify("    done " + path, config);
+        notify("    done " + filePath, config);
     }
     catch (error) {
-        notify("    write error " + path, config, error);
+        notify("    write error " + filePath, config, error);
     }
 };
 var writeSrcs = function (info) {
@@ -299,11 +306,13 @@ var getFilesInDir = function (dir) { return new Promise(function (resolve, rejec
 }); };
 var getInputFiles = function (config) {
     var dirs = Array.isArray(config.input) ? config.input : [config.input];
+    notify('getting files:', config, dirs);
     var promises = R.map(getFilesInDir)(dirs);
     return Promise.all(promises).then(function (a) { return R.flatten(a); });
 };
 var process = function (config) {
     return getInputFiles(config).then(function (files) {
+        notify('getFiles', config, files);
         var flipPF = function (config, file) { return exports.processFile(file, config); };
         var promises = R.map(R.curry(flipPF)(config))(files);
         return Promise.all(promises);
@@ -320,8 +329,7 @@ var verifyConfig = function (config) {
     var isInputArray = Array.isArray(config.input) || glob.sync(config.input).length > 1;
     if (hasOutput) {
         var output = R.prop('output', config);
-        var outputIsDir = path.extname(output) === '';
-        assert.ok((isInputArray && outputIsDir) || !isInputArray, "Config: If 'input' is more than one file, 'output' must be a directory.");
+        assert.ok((isInputArray && isDir(output)) || !isInputArray, "Config: If 'input' is more than one file, 'output' must be a directory.");
     }
     else
         assert.ok((isInputArray && hasOutDir) || !isInputArray, "Config: If 'input' is more than one file, 'output' must be a directory.");
