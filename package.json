@@ -1,7 +1,7 @@
 {
   "name": "cdnler",
-  "version": "1.0.3",
-  "description": "Takes html files with scripts referencing external Content Delivery Networks (CDNs), downloads those assets locally, and then saves a version of that html file referencing the local assets.",
+  "version": "1.0.4",
+  "description": "Javascript library assets, referenced in HTML SCRIPT tags to external Content Delivery Networks (CDNs), can be downloaded locally, and the script tag SRC attribute changed to the local reference.",
   "main": "index.js",
   "scripts": {
     "test": "node test/test.js test"
