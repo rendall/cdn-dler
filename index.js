@@ -18,7 +18,7 @@ var http = require("http");
 var path = require("path");
 var glob = require("glob");
 var assert = require("assert");
-var scriptPtrn = /(<script.*?src=["']((?:https?:)?\/\/[a-z0-9@\/\.\-]+\.[a-z]{2,4}(?![a-z])(?:\/[a-z\-\/\.\?=0-9\&_]*)?)["'].*?>\s?<\/script>)/g;
+var scriptPtrn = /(<script.*?src=["']((?:https?:)?\/\/[a-z0-9@\/\.\-]+\.[a-z]{2,4}(?![a-z])(?:\/[a-z\-\/\.\?=0-9\&_]*)?)["'].*?>\s?<\/script>)/gi;
 var helpMessage = "\n -- help         This help message.\n -- config       (optional) Specify a config file in JSON format, an \n                    object with properties containing the following \n                    values:\n -- input        (required) The filename or directory of html files to use \n                    as input.  Can be used multiple times in a single \n                    command.\n                     e.g:  -- input index.html\n                     e.g:  -- input ./*.html\n                     e.g:  -- input index.html --input about.html\n -- output      (required) The html filename or directory into which\n                    cdnler will write altered html.\n -- js           The directory into which CDN javscript assets are to be \n                    downloaded and stored. \n -- mkdirOK      By default, Cndler will make any directories needed. \n                    If it is not okay for Cndler to make directories, set \n                    this to false. Cndler will throw an error if 'false' \n                    and the directory does not exist.\n -- downloadOK   By default, Cndler will download CDN assets referenced \n                    in the input html file(s), overwriting local copies. \n                    If it is not okay to download files from the CDNs and \n                    overwrite corresponding local files, set this to false.\n -- overwriteOK  By default, Cndler will *not* overwrite input html files \n                    with modifications, but will rather write them to an \n                    output directory. If the input file is the same as the \n                    output file, this must be set to true. \n                    Default is false.\n -- verbose      Setting this to true will spam output, \n                    including the *content* of downloaded files. \n                    Default is false.\n -- cdnMap       This maps a URL to a local directory, the local reference \n                    that will be used in modified html files. \n                    Can be used multiple times in a single command.  \n                    It is comprised of two quoted strings \n                    separated by a comma.  The first string is part \n                    of a URL. Everything to the left of the first string \n                    in the URL will be replaced by the second string, \n                    which represents a local directory underneath \n                    the asset root directory.\n                     e.g. The parameters \n                        --js ./js/vendor \n                        --cdnMap \"cdn.example.com\",\"./example\" \n                     will map the URL \n                     https://cdn.example.com/js-fwork/1.0/example.js \n                     to the local path \n                     'js/vendor/example/js-fwork/1.0/example.js', \n                     and the src attribute will be changed \n                     in the modified html.";
 var Config = (function (_super) {
     __extends(Config, _super);
@@ -100,10 +100,8 @@ var verifyHTML = function (file) { return (file && file != ''); };
 var readHtmlFile = function (readFile, config) {
     notify("using config", config, config);
     notify("reading HTML file \"" + readFile + "\"", config);
-    var writeFile = config.outFile !== undefined ? config.outFile :
-        config.outDir !== undefined ?
-            normPath(config.outDir) + path.basename(readFile) :
-            isDir(config.output) ? normPath(config.output) + path.basename(readFile) : config.output;
+    var out = config.outFile || config.outDir || config.output;
+    var writeFile = isDir(out) ? normPath(out) + path.basename(readFile) : out;
     if (writeFile == readFile && !config.overwriteOK)
         return Promise.reject(new Error("To overwrite " + readFile + ", set 'overwriteOK' in config or parameters to 'true'"));
     notify("will write to " + writeFile, config);
@@ -140,7 +138,12 @@ var identifyScripts = function (info) {
         notify("    adding script " + src, info.config);
         return hasMatch ? getSrcs(html, R.append(match, matches)) : getSrcs(html, matches);
     };
-    var matches = getSrcs(info.html);
+    var multiplyChar = function (char, mult, ret) {
+        if (ret === void 0) { ret = ''; }
+        return mult <= 0 ? ret : multiplyChar(char, mult - 1, ret += char);
+    };
+    var htmlNoComments = info.html.replace(/(<!--[\s\S]*?-->)/g, function (g) { return multiplyChar(' ', g.length); });
+    var matches = getSrcs(htmlNoComments);
     if (matches.length == 0)
         notify("    no scripts identified in " + info.readFile, info.config);
     var urls = matches.map(function (m) { return m[2]; });
@@ -155,7 +158,7 @@ var downloadSrcs = function (info) {
         var onResponseGet = function (res) {
             var statusCode = res.statusCode;
             if (statusCode != 200)
-                reject("Error " + statusCode + ": " + res.statusMessage + " " + url);
+                reject("Error " + statusCode + ": " + res.statusMessage + " " + url + "  All downloads cancelled.");
             var fileData = '';
             res.on('data', function (data) {
                 fileData += data;
@@ -284,6 +287,7 @@ var writeHtmlFile = function (info) {
         notify("config settings prevent overwriting html files", info.config);
     return info;
 };
+var reportSuccess = function (info) { return "Success: " + info.paths.map(function (p) { return path.basename(p); }).join(', '); };
 exports.processFile = function (file, config) {
     return readHtmlFile(file, config)
         .then(identifyScripts)
@@ -292,7 +296,7 @@ exports.processFile = function (file, config) {
         .then(writeSrcs)
         .then(modifyHtmlFile)
         .then(writeHtmlFile)
-        .then(function (info) { return info; });
+        .then(function (info) { return config.verbose ? info : reportSuccess(info); });
 };
 var getFilesInDir = function (dir) { return new Promise(function (resolve, reject) {
     var options = {
@@ -326,6 +330,9 @@ var verifyConfig = function (config) {
     var hasOutDir = R.has('outDir', config);
     var hasOutFile = R.has('outFile', config);
     assert.ok(hasOutput || hasOutFile || hasOutDir, "Config: 'output' must be defined.");
+    var out = config.outDir || config.outFile || config.output;
+    if (!out.startsWith('.'))
+        console.warn("You probably want your output parameter to start with ../ or ./");
     var isInputArray = Array.isArray(config.input) || glob.sync(config.input).length > 1;
     if (hasOutput) {
         var output = R.prop('output', config);

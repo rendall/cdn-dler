@@ -6,7 +6,7 @@ import http = require('http');
 import path = require('path');
 import glob = require("glob");
 import assert = require('assert');
-const scriptPtrn = /(<script.*?src=["']((?:https?:)?\/\/[a-z0-9@\/\.\-]+\.[a-z]{2,4}(?![a-z])(?:\/[a-z\-\/\.\?=0-9\&_]*)?)["'].*?>\s?<\/script>)/g
+const scriptPtrn = /(<script.*?src=["']((?:https?:)?\/\/[a-z0-9@\/\.\-]+\.[a-z]{2,4}(?![a-z])(?:\/[a-z\-\/\.\?=0-9\&_]*)?)["'].*?>\s?<\/script>)/gi
 const helpMessage: string = `
  -- help         This help message.
  -- config       (optional) Specify a config file in JSON format, an 
@@ -163,10 +163,8 @@ const readHtmlFile = (readFile: string, config: Config): Promise<HtmlInfo> => {
     notify(`using config`, config, config);
     notify(`reading HTML file "${readFile}"`, config);
 
-    const writeFile: string = config.outFile !== undefined ? config.outFile :
-        config.outDir !== undefined ?
-            normPath(config.outDir) + path.basename(readFile) : 
-                isDir(config.output!)? normPath(config.output!) + path.basename(readFile) : config.output!;
+    const out = config.outFile || config.outDir || config.output;
+    const writeFile: string = isDir(out!)? normPath(out!) + path.basename(readFile) : out!;
 
     if (writeFile == readFile && !config.overwriteOK) return Promise.reject(new Error(`To overwrite ${readFile}, set 'overwriteOK' in config or parameters to 'true'`));
 
@@ -188,8 +186,9 @@ const readHtmlFile = (readFile: string, config: Config): Promise<HtmlInfo> => {
         }
     }
     return new Promise<HtmlInfo>(executor);
-
 }
+
+declare var $1:string;
 
 const identifyScripts = (info: HtmlInfo): HtmlInfo => {
     notify(`identifying scripts in "${info.readFile}"`, info.config);
@@ -206,7 +205,12 @@ const identifyScripts = (info: HtmlInfo): HtmlInfo => {
         return hasMatch ? getSrcs(html, R.append(match, matches)) : getSrcs(html, matches);
     }
 
-    const matches = getSrcs(info.html);
+    const multiplyChar = (char:string, mult:number, ret:string = ''):string => mult <= 0? ret: multiplyChar(char, mult-1, ret += char);
+
+    // replace with equal length string rather than strip comments, in order to keep replacement indices aligned.
+    const htmlNoComments = info.html.replace(/(<!--[\s\S]*?-->)/g, (g:string) => multiplyChar(' ', g.length));
+    const matches = getSrcs(htmlNoComments);
+
     if (matches.length == 0) notify(`    no scripts identified in ${info.readFile}`, info.config);
     const urls = matches.map((m: RegExpExecArray) => m[2]);
     const newInfo: any = R.compose(R.assoc('urls', urls), R.assoc('matches', matches))(info);
@@ -226,7 +230,7 @@ const downloadSrcs = (info: HtmlInfo): Promise<HtmlInfo> => {
 
             const statusCode = res.statusCode;
 
-            if (statusCode != 200) reject(`Error ${statusCode}: ${res.statusMessage} ${url}`);
+            if (statusCode != 200) reject(`Error ${statusCode}: ${res.statusMessage} ${url}  All downloads cancelled.`);
 
             let fileData = '';
 
@@ -383,6 +387,7 @@ const writeHtmlFile = (info: HtmlInfo) => {
     return info;
 }
 
+const reportSuccess = (info:HtmlInfo) => "Success: " + info.paths.map((p) => path.basename(p)).join(', ');
 
 export const processFile = (file: string, config: Config) =>
     readHtmlFile(file, config)
@@ -392,7 +397,7 @@ export const processFile = (file: string, config: Config) =>
         .then(writeSrcs)
         .then(modifyHtmlFile)
         .then(writeHtmlFile)
-        .then((info: HtmlInfo) => info) // emphasis
+        .then((info: HtmlInfo) => config.verbose? info : reportSuccess(info)) // emphasis
 
 const getFilesInDir = (dir: string) => new Promise<string[]>((resolve: Function, reject: Function) => {
     const options: glob.IOptions = {
@@ -431,6 +436,9 @@ const verifyConfig = (config: Config) => {
     const hasOutDir = R.has('outDir', config);
     const hasOutFile = R.has('outFile', config);
     assert.ok(hasOutput || hasOutFile || hasOutDir, "Config: 'output' must be defined.");
+
+    const out = config.outDir || config.outFile || config.output;
+    if (!out!.startsWith('.')) console.warn("You probably want your output parameter to start with ../ or ./");
 
     const isInputArray = Array.isArray(config.input) || glob.sync(config.input!).length > 1;
     if (hasOutput) {

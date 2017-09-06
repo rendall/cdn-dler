@@ -23,5 +23,5 @@ export declare class HtmlInfo {
     data: string[];
     constructor(config: Config, readFile: string, writeFile: string);
 }
-export declare const processFile: (file: string, config: Config) => Promise<HtmlInfo>;
-export declare const run: (config?: any) => Promise<void | HtmlInfo[]>;
+export declare const processFile: (file: string, config: Config) => Promise<string | HtmlInfo>;
+export declare const run: (config?: any) => Promise<void | (string | HtmlInfo)[]>;
