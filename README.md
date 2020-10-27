@@ -21,7 +21,7 @@ Given that the arguments against far outweigh the benefits, CDNLER is archived.
 
 ### Recommendation
 
-My recommendation, if you have not already, is to shift your practice from loading resources externally and to use the currently widespread practice of downloading libraries, bundling them with [tree-shaking](https://en.wikipedia.org/wiki/Tree_shaking), and including bundled scripts. [`webpack`](https://webpack.js.org/) is the currently most popular bundler (and the one I happen to use the most), but some find its configuration to be unnecessarily convoluted, and I think that's a fair point. Other bundlers include [`rollup.js`](https://rollupjs.org/guide/en/) (which I found to be easy to configure but has fewer features), [`Parcel`](https://parceljs.org/) (I used it once about 5 years ago) and [Snowpack](https://www.snowpack.dev/) (I have zero experience with this one, only having ever heard it mentioned)
+My recommendation, if you have not already, is to shift your practice from loading resources externally and to use the currently widespread practice of bundling scripts, packages and libraries with [tree-shaking](https://en.wikipedia.org/wiki/Tree_shaking). [`webpack`](https://webpack.js.org/) is the currently most popular bundler (and the one I happen to use the most), but some find its configuration to be unnecessarily convoluted, and I think that's a fair point. Other bundlers include [`rollup.js`](https://rollupjs.org/guide/en/) (which I found to be easy to configure but has fewer features), [`Parcel`](https://parceljs.org/) (I used it once about 5 years ago) and [Snowpack](https://www.snowpack.dev/) (I have zero experience with this one, only having ever heard it mentioned)
 
 ___
 ## Install
